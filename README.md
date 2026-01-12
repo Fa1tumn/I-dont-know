@@ -1,4 +1,4 @@
-# 基于Deepseek生成文案工具
+# 基于智谱ai生成文案工具
 
 
 ## 快速开始
@@ -21,7 +21,7 @@ pip install -r requirements.txt
 - `-p, --platform`：目标平台（例如：`douyin`, `tiktok`, `youtube`），默认 `short-video`
 - `-f, --format`（`--fmt`）：输出格式，`script`（脚本）或 `caption`（标题/字句），默认 `script`
 - `-t, --tone`：文案语气（例如：`energetic`, `professional`）
-- `-l, --length`：文案长度（`short`, `medium`, `long`）
+- `-l, --length`：文案长度（`short`, `medium`, `long`, `2min`）
 - `-n, --number`：生成变体数量（整数），默认 `1`
 - `--out`：输出文件路径（JSON）。若不指定，则打印到标准输出（终端）
 - `--mock`：离线模拟模式（不开网络，返回 mock 文案），用于本地测试
@@ -32,10 +32,67 @@ pip install -r requirements.txt
 python context/video_tool.py "一款面向中小企业的社交媒体管理工具" -p douyin -f caption -t energetic -l short -n 3 --mock
 ```
 
+## 如何使用
 
-## 文件说明
+```bash
+cd context
+bash test.sh
+```
+在context.txt中输入文本
 
-- `deepseek_client.py`：Deepseek API 客户端封装，包含重试与错误处理。
-- `generator.py`：`CopyGenerator` 类，构建 prompt 并调用客户端生成多个文案变体。
-- `video_tool.py`：简单命令行工具示例。
+结果实例：
+
+```txt
+--- Generated video copy ---
+
+[1] # 社媒管理神器，一键搞定所有平台！
+
+#社媒管理 #AI营销 #创业必备 #效率工具 #中小企业营销 #数字营销
+
+**【抓人开头】**
+社媒管理还在手忙脚乱？3个痛点，让你秒懂！
+
+---
+
+**【痛点 | 20秒】**
+还在为社媒管理头疼吗？多平台账号来回切换，混乱到崩溃！内容创作灵感枯竭，一天都在加班！投入看 不到回报，效果怎么衡量？你的时间，应该花在更重要的事情上！
+
+---
+
+**【解决方案 | 30秒】**
+别担心！解决方案来了！一站式社媒管理工具，让你告别混乱！AI智能生成内容，灵感源源不断！多平台 一键发布，效率提升N倍！简单三步，轻松搞定你的社媒运营！
+
+---
+
+**【功能介绍 | 40秒】**
+看这里！强大功能，让你尖叫！内容创作助手：AI驱动，一键生成吸引眼球的内容！无论是短视频文案、 还是图文海报，统统搞定！跨平台发布：一个账号，同时管理微博、抖音、小红书等8大平台！再也不用来回切换了，太爽了！数据分析报表：实时监控数据表现，一目了然！哪些内容受欢迎，哪些平台效果好， 清清楚楚！
+
+---
+
+**【价值证明 | 20秒】**
+更惊人的是！使用后节省70%时间！效率翻倍，工作生活两不误！营销效果提升300%！轻松获取更多客户！数据驱动决策，让你的社媒运营有理有据！小投入，大回报，这才是真正的社媒管理！
+
+---
+
+**【行动号召 | 10秒】**
+心动不如行动！免费试用15天，不花一分钱！扫码立即体验，开启高效社媒管理之旅！名额有限，先到先 得！
+```
+
+## 使用智谱 (Zhipu / BigModel) API
+
+本项目默认使用智谱（BigModel）作为后端。请在 `.env` 中设置以下变量：
+
+```
+ZHIPU_API_KEY=your_api_key_here
+BIGMODEL_BASE_URL=https://open.bigmodel.cn
+```
+
+- 临时在 PowerShell 中设置（当前会话）:
+
+```powershell
+$env:ZHIPU_API_KEY = "your_api_key_here"
+```
+
+
+
 

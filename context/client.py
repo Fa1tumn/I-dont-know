@@ -1,6 +1,7 @@
-"""Deepseek API client wrapper
+"""Client wrapper for Zhipu (BigModel) API
 
-Configurable to support different Deepseek endpoints. Reads API key from env var `DEEPSEEK_API_KEY`.
+This file provides a compatible client interface used by the rest of the project.
+It will read API keys from `ZHIPU_API_KEY` or `BIGMODEL_API_KEY` (falling back to `DEEPSEEK_API_KEY` for compatibility).
 """
 from __future__ import annotations
 
@@ -13,200 +14,127 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# ✅ 确认正确的API端点
-DEFAULT_BASE_URL = "https://api.deepseek.com"  # 或 "https://api.deepseek.ai"
+DEFAULT_BASE_URL = "https://open.bigmodel.cn"
+CHAT_PATH = "/api/paas/v4/chat/completions"
+MODELS_PATH = "/api/paas/v4/models"
 
 
-class DeepseekClient:
+class ZhipuClient:
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, timeout: int = 30):
-        self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
+        # Prefer ZHIPU or BIGMODEL env vars, fall back to DEEPSEEK_API_KEY for compatibility
+        self.api_key = api_key or os.getenv("ZHIPU_API_KEY") or os.getenv("BIGMODEL_API_KEY") or os.getenv("DEEPSEEK_API_KEY")
         if not self.api_key:
-            raise ValueError("DEEPSEEK_API_KEY not set. Provide api_key or set DEEPSEEK_API_KEY env var.")
-        self.base_url = base_url or os.getenv("DEEPSEEK_BASE_URL", DEFAULT_BASE_URL)
+            raise ValueError("API key not set. Set ZHIPU_API_KEY or BIGMODEL_API_KEY environment variable.")
+        self.base_url = base_url or os.getenv("BIGMODEL_BASE_URL", DEFAULT_BASE_URL)
         self.timeout = timeout
         self.session = requests.Session()
-        self.session.headers.update({
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        })
-    
-    def _post(self, path: str, payload: Dict[str, Any], max_retries: int = 3) -> Dict[str, Any]:
-        url = self.base_url.rstrip("/") + "/" + path.lstrip("/")
+        self.session.headers.update({"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"})
+
+    def _post(self, path: str, payload: Dict[str, Any], stream: bool = False, max_retries: int = 3) -> Union[Dict[str, Any], requests.Response]:
+        url = self.base_url.rstrip("/") + path
         backoff = 1.0
-        
         for attempt in range(1, max_retries + 1):
             try:
+                if stream:
+                    resp = self.session.post(url, json=payload, timeout=self.timeout, stream=True)
+                    resp.raise_for_status()
+                    return resp
                 resp = self.session.post(url, json=payload, timeout=self.timeout)
-                
-                # 详细的调试信息
-                logger.debug(f"请求URL: {url}")
-                logger.debug(f"请求数据: {payload}")
-                logger.debug(f"状态码: {resp.status_code}")
-                
                 if resp.status_code == 429:
-                    logger.warning(f"请求频率限制，等待 {backoff} 秒后重试")
+                    logger.warning("Rate limited, retrying in %s seconds", backoff)
                     time.sleep(backoff)
                     backoff *= 2
                     continue
-                
                 resp.raise_for_status()
                 return resp.json()
-                
             except requests.RequestException as exc:
-                logger.error(f"请求失败 (尝试 {attempt}/{max_retries}): {exc}")
+                logger.exception("Request failed (attempt %s/%s): %s", attempt, max_retries, exc)
                 if attempt == max_retries:
                     raise
                 time.sleep(backoff)
                 backoff *= 2
-        
-        raise RuntimeError("请求失败")
-    
-    def generate(
-        self, 
-        prompt: str, 
-        model: str = "deepseek-chat", 
-        max_tokens: int = 1000, 
-        temperature: float = 0.7,
-        n: int = 1,  # 新增：生成多个结果
-        **kwargs
-    ) -> Union[str, List[str]]:
-        """调用DeepSeek文本生成端点
-        
-        参数:
-            prompt: 用户输入的提示词
-            model: 使用的模型
-            max_tokens: 最大生成token数
-            temperature: 生成温度
-            n: 生成多少个结果
-            **kwargs: 其他API参数
-        
-        返回:
-            当 n=1 时返回字符串，当 n>1 时返回字符串列表
+        raise RuntimeError("Failed to make request")
+
+    def generate(self, prompt: str, model: str = "glm-4.5-flash", temperature: float = 1.0, n: int = 1, system: Optional[str] = None, max_tokens: Optional[int] = None, stream: bool = False, **kwargs) -> Union[str, List[str]]:
+        """Generate text using Zhipu chat completions endpoint.
+
+        Args:
+            prompt: user prompt string
+            model: model name (e.g., glm-4.7)
+            temperature: sampling temperature
+            n: number of variants to return (if supported by provider)
+            system: optional system prompt
+            max_tokens: optional token limit
+            stream: whether to use streaming (returns Response object)
+            **kwargs: extra params
+        Returns:
+            string (if n==1) or list of strings
         """
-        # ✅ 正确的端点路径
-        path = "/v1/chat/completions"
-        
-        # ✅ 正确的请求格式
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "n": n,  # 生成n个结果
-        }
-        
-        # 添加其他可选参数
+        messages = []
+        if system is None:
+            system = "你是一个有用的AI助手。"
+        messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        payload: Dict[str, Any] = {"model": model, "messages": messages, "temperature": temperature, "stream": stream}
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+        if n is not None:
+            payload["n"] = n
         payload.update(kwargs)
-        
-        data = self._post(path, payload)
-        
-        # ✅ 正确的响应解析
-        if isinstance(data, dict) and "choices" in data:
-            choices = data["choices"]
-            
-            if n == 1:
-                # 返回单个结果
-                if choices and "message" in choices[0]:
-                    return choices[0]["message"]["content"]
-            else:
-                # 返回多个结果
-                results = []
-                for choice in choices:
-                    if "message" in choice:
-                        results.append(choice["message"]["content"])
-                return results
-        
-        # 备用解析逻辑
-        logger.warning(f"无法解析响应: {data}")
-        if isinstance(data, dict) and "choices" in data:
-            return str([choice.get("text", choice.get("message", "")) for choice in data["choices"]])
-        
+
+        if stream:
+            return self._post(CHAT_PATH, payload, stream=True)
+
+        data = self._post(CHAT_PATH, payload)
+
+        # Parse response defensively
+        if isinstance(data, dict):
+            if "choices" in data and data["choices"]:
+                choices = data["choices"]
+                if n == 1:
+                    first = choices[0]
+                    # try several common fields
+                    if "message" in first and isinstance(first["message"], dict):
+                        return first["message"].get("content", "")
+                    if "content" in first:
+                        return first.get("content", "")
+                    if "text" in first:
+                        return first.get("text", "")
+                else:
+                    results: List[str] = []
+                    for c in choices:
+                        if "message" in c and isinstance(c["message"], dict):
+                            results.append(c["message"].get("content", ""))
+                        else:
+                            results.append(c.get("content", c.get("text", "")))
+                    return results
+            # fallback: try 'data' or 'result'
+            if "data" in data and isinstance(data["data"], list):
+                return [str(x) for x in data["data"]]
         return str(data)
-    
-    def chat_completion(
-        self,
-        messages: List[Dict[str, str]],
-        model: str = "deepseek-chat",
-        max_tokens: int = 1000,
-        temperature: float = 0.7,
-        stream: bool = False,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """更通用的聊天补全接口
-        
-        参数:
-            messages: 消息历史，格式为 [{"role": "user", "content": "..."}, ...]
-            model: 模型名称
-            max_tokens: 最大生成token数
-            temperature: 生成温度
-            stream: 是否使用流式输出
-            **kwargs: 其他API参数
-        
-        返回:
-            完整的API响应
-        """
-        path = "/v1/chat/completions"
-        
-        payload = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "stream": stream,
-        }
-        payload.update(kwargs)
-        
-        return self._post(path, payload)
-    
+
     def list_models(self) -> List[str]:
-        """获取可用模型列表"""
-        path = "/v1/models"
-        
         try:
-            data = self._post(path, {})
+            data = self._post(MODELS_PATH, {})
             if isinstance(data, dict) and "data" in data:
-                return [model["id"] for model in data["data"]]
+                return [m.get("id", m.get("model", "")) for m in data["data"]]
             return []
         except Exception as e:
-            logger.error(f"获取模型列表失败: {e}")
+            logger.error("Failed to list models: %s", e)
             return []
 
 
-# 使用示例
+# Backwards compatibility: keep name DeepseekClient used by other modules
+DeepseekClient = ZhipuClient
+
+
 if __name__ == "__main__":
-    # 设置日志
     logging.basicConfig(level=logging.INFO)
-    
-    # 从环境变量读取API Key
-    client = DeepseekClient()
-    
-    # 测试单个生成
-    print("测试单个生成...")
-    result = client.generate(
-        prompt="一款面向中小企业的社交媒体管理工具，请生成3个品牌名称",
-        max_tokens=300,
-        temperature=0.8
-    )
-    print(f"结果: {result}")
-    
-    # 测试多个生成
-    print("\n测试多个生成 (n=3)...")
-    results = client.generate(
-        prompt="一款面向中小企业的社交媒体管理工具，请生成3个品牌名称",
-        n=3,
-        max_tokens=200,
-        temperature=0.7
-    )
-    
-    if isinstance(results, list):
-        for i, r in enumerate(results, 1):
-            print(f"选项 {i}: {r}")
-    else:
-        print(f"单个结果: {results}")
-    
-    # 测试获取模型列表
-    print("\n获取可用模型...")
-    models = client.list_models()
-    print(f"可用模型: {models}")
+    client = ZhipuClient()
+
+    print("测试生成...")
+    print(client.generate("请为一款面向中小企业的社交媒体管理工具写一句抓人开头", n=1))
+
+    print("获取模型列表...")
+    print(client.list_models())
