@@ -20,13 +20,28 @@ MODELS_PATH = "/api/paas/v4/models"
 
 
 class ZhipuClient:
-    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, timeout: int = 30):
+    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, timeout: Optional[Union[float, tuple]] = None):
         # Prefer ZHIPU or BIGMODEL env vars, fall back to DEEPSEEK_API_KEY for compatibility
         self.api_key = api_key or os.getenv("ZHIPU_API_KEY") or os.getenv("BIGMODEL_API_KEY") or os.getenv("DEEPSEEK_API_KEY")
         if not self.api_key:
             raise ValueError("API key not set. Set ZHIPU_API_KEY or BIGMODEL_API_KEY environment variable.")
         self.base_url = base_url or os.getenv("BIGMODEL_BASE_URL", DEFAULT_BASE_URL)
-        self.timeout = timeout
+        # timeout can be a single float (total/ read timeout) or a (connect, read) tuple
+        env_timeout = os.getenv("BIGMODEL_TIMEOUT") or os.getenv("ZHIPU_TIMEOUT")
+        if timeout is not None:
+            self.timeout = timeout
+        elif env_timeout:
+            try:
+                if "," in env_timeout:
+                    parts = [float(x.strip()) for x in env_timeout.split(",")]
+                    self.timeout = tuple(parts)
+                else:
+                    self.timeout = float(env_timeout)
+            except Exception:
+                self.timeout = (5.0, 180.0)
+        else:
+            # short connect timeout, longer read timeout
+            self.timeout = (5.0, 180.0)
         self.session = requests.Session()
         self.session.headers.update({"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"})
 
@@ -47,6 +62,12 @@ class ZhipuClient:
                     continue
                 resp.raise_for_status()
                 return resp.json()
+            except requests.ReadTimeout as exc:
+                logger.warning("Request timed out (attempt %s/%s): %s. Consider increasing timeout via BIGMODEL_TIMEOUT or ZHIPU_TIMEOUT env var or passing a higher timeout to ZhipuClient.", attempt, max_retries, exc)
+                if attempt == max_retries:
+                    raise
+                time.sleep(backoff)
+                backoff *= 2
             except requests.RequestException as exc:
                 logger.exception("Request failed (attempt %s/%s): %s", attempt, max_retries, exc)
                 if attempt == max_retries:

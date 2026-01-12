@@ -40,6 +40,7 @@ def main():
     p.add_argument("-t", "--tone", help="Tone (e.g., energetic, professional)")
     p.add_argument("-l", "--length", help="Length (short, medium, long)")
     p.add_argument("-n", "--number", type=int, default=1, help="Number of variants to generate")
+    p.add_argument("-s", "--similarity", type=int, default=100, help="Similarity percentage to original brief (0-100)")
     p.add_argument("--out", help="Output file (JSON). If omitted, prints to stdout")
     p.add_argument("--mock", action="store_true", help="Run in mock/offline mode (no network)")
     p.add_argument("--debug", action="store_true", help="Show debug info (provider, model, masked API key)")
