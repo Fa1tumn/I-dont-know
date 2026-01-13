@@ -1,7 +1,7 @@
 """Extract time/content pairs from context/context_generated.log
 
 Usage:
-  python get_context.py --log ../context_generated.log --out extracted_captions.json --format json
+  python voice/get_context.py --log ../context/context_generated.log --out extracted_captions.json --format json
 
 The script handles several shapes found in the log:
  - entries where `data["script/caption"]` is a list of blocks with `time` and `caption` or `content`
@@ -168,9 +168,9 @@ def write_csv(path: Path, items: List[Dict[str, Any]]):
             writer.writerow([i.get("timestamp", ""), i.get("time", ""), i.get("title", ""), i.get("content", "")])
 
 
-def main():
+def get_content_json():
     p = argparse.ArgumentParser(description="Extract time/content captions from context_generated.log")
-    p.add_argument("--log", default=Path(__file__).parent.parent / "context_generated.log", help="Path to context_generated.log")
+    p.add_argument("--log", default=Path(__file__).parent.parent / "context" / "context_generated.log", help="Path to context/context_generated.log")
     p.add_argument("--out", default=None, help="Output file (json or csv). If omitted prints to stdout")
     p.add_argument("--format", choices=["json", "csv"], default="json", help="Output format when writing to a file")
     args = p.parse_args()
@@ -198,6 +198,6 @@ def main():
     else:
         print(json.dumps(all_items, ensure_ascii=False, indent=2))
 
-
+    return all_items
 if __name__ == "__main__":
-    main()
+    print(get_content_json())
