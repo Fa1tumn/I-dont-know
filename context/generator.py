@@ -44,6 +44,10 @@ class VideoGenerator:
             "- 如果 format 是 caption，则输出简短有力的标题和若干标签。",
             "- 保持贴合平台规范。",
             "- 要求每个时间段的字数在150-200字每分钟。",
+            "- 按照json格式输出，包含以下字段："
+            "  - script/caption: 文案内容",
+            "  - time 文案内容的时间段"
+            "  - title 每段文案的标题（仅限caption）",
         ]
         return "\n".join(prompt_parts)
 
